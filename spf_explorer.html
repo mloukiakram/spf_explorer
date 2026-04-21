@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPF Domain Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f5f7;
+    --bg2: #ffffff;
+    --bg3: #f0f0f2;
+    --bg4: #e8e8ec;
+    --border: #e0e0e6;
+    --border2: #c8c8d2;
+    --text: #111114;
+    --text2: #555560;
+    --text3: #9898a8;
+    --accent: #00a880;
+    --accent-dim: #00a88012;
+    --accent-border: #00a88040;
+    --blue: #1a6fd4;
+    --blue-dim: #1a6fd415;
+    --amber: #c47f00;
+    --amber-dim: #c47f0015;
+    --red: #d93636;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Inter', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+  .logo {
+    width: 30px; height: 30px;
+    background: var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .logo svg { width: 16px; height: 16px; fill: #0e0e10; }
+  header h1 { font-family: var(--mono); font-size: 14px; font-weight: 600; letter-spacing: 0.05em; color: var(--text); }
+  header span { font-family: var(--mono); font-size: 11px; color: var(--text3); margin-left: auto; }
+
+  /* ── UPLOAD SCREEN ── */
+  #upload-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px;
+    gap: 24px;
+  }
+  .upload-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text2);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .upload-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    width: 100%;
+    max-width: 740px;
+  }
+  .upload-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: border-color 0.15s;
+  }
+  .upload-card:hover { border-color: var(--border2); }
+  .upload-card.ready { border-color: var(--accent-border); background: var(--accent-dim); }
+  .upload-card h3 { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: 0.08em; }
+  .upload-card p { font-size: 12px; color: var(--text2); line-height: 1.6; }
+  .upload-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg3);
+    border: 1px dashed var(--border2);
+    border-radius: 7px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+    transition: all 0.15s;
+  }
+  .upload-label:hover { border-color: var(--accent); color: var(--accent); }
+  .upload-label input { display: none; }
+  .file-name { font-family: var(--mono); font-size: 11px; color: var(--accent); word-break: break-all; }
+  .btn-process {
+    background: var(--accent);
+    color: #0e0e10;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 32px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: opacity 0.15s;
+  }
+  .btn-process:hover { opacity: 0.85; }
+  .btn-process:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* ── PROGRESS ── */
+  #progress-bar-wrap {
+    width: 100%;
+    max-width: 400px;
+    background: var(--bg3);
+    border-radius: 4px;
+    height: 4px;
+    overflow: hidden;
+    display: none;
+  }
+  #progress-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.1s;
+    border-radius: 4px;
+  }
+  #progress-text { font-family: var(--mono); font-size: 12px; color: var(--text2); display: none; }
+
+  /* ── MAIN APP ── */
+  #app { flex: 1; display: none; overflow: hidden; }
+
+  /* ── SEARCH BAR ── */
+  .search-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .search-input {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 9px 14px 9px 38px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2360606e' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 12px center;
+  }
+  .search-input:focus { border-color: var(--accent-border); }
+  .search-input::placeholder { color: var(--text3); }
+  .stats-pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 12px;
+    white-space: nowrap;
+  }
+  .stats-pill span { color: var(--text2); }
+
+  /* ── TWO PANEL LAYOUT ── */
+  .panels {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    height: calc(100vh - 115px);
+    overflow: hidden;
+  }
+
+  /* ── LEFT PANEL: server list ── */
+  .server-list {
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    background: var(--bg);
+  }
+  .server-list::-webkit-scrollbar { width: 4px; }
+  .server-list::-webkit-scrollbar-track { background: transparent; }
+  .server-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .server-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.1s;
+    gap: 10px;
+  }
+  .server-item:hover { background: var(--bg2); }
+  .server-item.active { background: var(--accent-dim); border-bottom-color: var(--accent-border); }
+  .server-item.active .server-name { color: var(--accent); }
+  .server-name { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .server-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+  .domain-count { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--text); }
+  .ip-count { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+
+  /* ── RIGHT PANEL: detail ── */
+  .detail-panel {
+    overflow-y: auto;
+    background: var(--bg);
+  }
+  .detail-panel::-webkit-scrollbar { width: 4px; }
+  .detail-panel::-webkit-scrollbar-track { background: transparent; }
+  .detail-panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 12px;
+    color: var(--text3);
+  }
+  .empty-state svg { width: 40px; height: 40px; opacity: 0.3; }
+  .empty-state p { font-family: var(--mono); font-size: 12px; letter-spacing: 0.05em; }
+
+  .detail-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 10;
+  }
+  .detail-server-name {
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .summary-cards {
+    display: flex;
+    gap: 10px;
+  }
+  .summary-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .summary-label { font-size: 11px; color: var(--text3); font-family: var(--mono); letter-spacing: 0.05em; }
+  .summary-val { font-family: var(--mono); font-size: 20px; font-weight: 600; color: var(--text); }
+
+  .copy-all-btn {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s;
+    align-self: flex-start;
+    margin-top: 2px;
+  }
+  .copy-all-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .copy-all-btn.copied { color: var(--accent); border-color: var(--accent-border); }
+
+  /* ── IP BLOCKS ── */
+  .ip-blocks { padding: 16px 24px; display: flex; flex-direction: column; gap: 8px; }
+
+  .ip-block {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .ip-block-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.1s;
+  }
+  .ip-block-header:hover { background: var(--bg3); }
+  .ip-block.expanded .ip-block-header { background: var(--bg3); border-bottom: 1px solid var(--border); }
+  .ip-addr { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--blue); flex: 1; cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+  .ip-addr:hover { opacity: 0.75; }
+  .ip-domain-count {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+    background: var(--bg4);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2px 10px;
+  }
+  .expand-icon {
+    width: 16px; height: 16px;
+    color: var(--text3);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+  .ip-block.expanded .expand-icon { transform: rotate(90deg); }
+
+  .ip-copy-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    cursor: pointer;
+    transition: all 0.12s;
+    flex-shrink: 0;
+  }
+  .ip-copy-btn:hover { border-color: var(--accent-border); color: var(--accent); }
+  .ip-copy-btn.copied { color: var(--accent); border-color: var(--accent-border); }
+
+  .domain-list {
+    display: none;
+    padding: 10px 16px 14px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .domain-list::-webkit-scrollbar { width: 3px; }
+  .domain-list::-webkit-scrollbar-thumb { background: var(--border2); }
+  .ip-block.expanded .domain-list { display: block; }
+
+  .domain-item {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+    padding: 3px 0;
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .domain-item:last-child { border-bottom: none; }
+
+  /* ── NO RESULTS ── */
+  .no-results {
+    padding: 32px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text3);
+  }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--accent);
+    color: #0e0e10;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 10px 18px;
+    border-radius: 8px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: all 0.2s;
+    pointer-events: none;
+    z-index: 9999;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
+
+  /* ── DRAG & DROP ── */
+  .upload-card.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .upload-label.drag-over {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  /* ── PASTE TEXTAREA ── */
+  .paste-toggle {
+    background: none;
+    border: none;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+    transition: color 0.15s;
+    align-self: flex-start;
+  }
+  .paste-toggle:hover { color: var(--accent); }
+
+  .paste-area {
+    display: none;
+    width: 100%;
+    height: 110px;
+    background: var(--bg3);
+    border: 1px dashed var(--border2);
+    border-radius: 7px;
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s;
+    line-height: 1.6;
+  }
+  .paste-area:focus { border-color: var(--accent); }
+  .paste-area::placeholder { color: var(--text3); }
+  .paste-area.visible { display: block; }
+
+  @media (max-width: 640px) {
+    .upload-grid { grid-template-columns: 1fr; }
+    .panels { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+  </div>
+  <h1>SPF DOMAIN EXPLORER</h1>
+  <span id="header-file-label"></span>
+</header>
+
+<!-- UPLOAD SCREEN -->
+<div id="upload-screen">
+  <p class="upload-title">Load Your Files</p>
+  <div class="upload-grid">
+    <div class="upload-card" id="card-spf">
+      <h3>01 — SPF OUTPUT</h3>
+      <p>The <code>.xls</code> file from your script — semicolon-delimited with IP001/IP002 placeholders in the server column.</p>
+      <label class="upload-label" id="spf-drop-label">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Choose or drop file
+        <input type="file" id="spf-file" accept=".xls,.csv,.txt">
+      </label>
+      <div class="file-name" id="spf-name" style="display:none"></div>
+    </div>
+    <div class="upload-card" id="card-map">
+      <h3>02 — SERVER MAPPING</h3>
+      <p>Your server template <em>(IPs Per Server sheet)</em>, a provider list file, or <strong>paste raw data</strong> directly.</p>
+      <label class="upload-label" id="map-drop-label">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Choose or drop file
+        <input type="file" id="map-file" accept=".xlsx,.xls">
+      </label>
+      <button class="paste-toggle" id="paste-toggle-btn" onclick="togglePasteArea()">or paste data instead</button>
+      <textarea class="paste-area" id="map-paste-area" placeholder="sl2297&#10;146.59.34.149,f1yogjmauc.com&#10;51.83.179.154,mail.f1yogjmauc.com&#10;&#10;sl2298&#10;15.204.219.96,flgyltdt45.com&#10;..." spellcheck="false"></textarea>
+      <div class="file-name" id="map-name" style="display:none"></div>
+    </div>
+  </div>
+  <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+  <p id="progress-text"></p>
+  <button class="btn-process" id="process-btn" disabled onclick="processFiles()">Process Files</button>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <div class="search-row">
+    <input class="search-input" type="text" id="search-input" placeholder="Search server name..." oninput="filterServers(this.value)">
+    <div class="stats-pill" id="global-stats"></div>
+    <button class="copy-all-btn" id="copy-server-btn" style="display:none" onclick="copyServerDomains()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy all domains
+    </button>
+  </div>
+  <div class="panels">
+    <div class="server-list" id="server-list"></div>
+    <div class="detail-panel" id="detail-panel">
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <p>SELECT A SERVER TO EXPLORE</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let appData = {};
+let allServers = [];
+let currentServer = null;
+let spfFileReady = false;
+let mapFileReady = false;
+let spfText = '';
+let ipToServer = null;
+let mapFormat = '';
+
+// ── FILE INPUT HANDLERS ──
+document.getElementById('spf-file').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  loadSpfFile(file);
+});
+
+document.getElementById('map-file').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  loadMapFile(file);
+});
+
+// ── DRAG & DROP: SPF card ──
+setupDragDrop('card-spf', 'spf-drop-label', function(file) {
+  loadSpfFile(file);
+});
+
+// ── DRAG & DROP: Map card ──
+setupDragDrop('card-map', 'map-drop-label', function(file) {
+  loadMapFile(file);
+});
+
+function setupDragDrop(cardId, labelId, onFileDrop) {
+  const card = document.getElementById(cardId);
+  const label = document.getElementById(labelId);
+
+  ['dragenter', 'dragover'].forEach(evt => {
+    card.addEventListener(evt, function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      card.classList.add('drag-over');
+      label.classList.add('drag-over');
+    });
+  });
+
+  ['dragleave', 'dragend'].forEach(evt => {
+    card.addEventListener(evt, function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      card.classList.remove('drag-over');
+      label.classList.remove('drag-over');
+    });
+  });
+
+  card.addEventListener('drop', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    card.classList.remove('drag-over');
+    label.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) onFileDrop(file);
+  });
+}
+
+function loadSpfFile(file) {
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    spfText = ev.target.result;
+    spfFileReady = true;
+    document.getElementById('spf-name').textContent = file.name;
+    document.getElementById('spf-name').style.display = 'block';
+    document.getElementById('card-spf').classList.add('ready');
+    checkReady();
+  };
+  reader.readAsText(file);
+}
+
+function loadMapFile(file) {
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const wb = XLSX.read(ev.target.result, { type: 'array' });
+      const parsed = parseMapping(wb);
+      if (!parsed) return;
+      ipToServer = parsed.map;
+      mapFormat = parsed.format;
+      mapFileReady = true;
+      document.getElementById('map-name').textContent = file.name + '  ·  ' + parsed.format;
+      document.getElementById('map-name').style.display = 'block';
+      document.getElementById('card-map').classList.add('ready');
+      // Hide paste area if file was loaded
+      document.getElementById('map-paste-area').classList.remove('visible');
+      checkReady();
+    } catch(err) { alert('Could not read mapping file: ' + err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── PASTE TOGGLE ──
+function togglePasteArea() {
+  const area = document.getElementById('map-paste-area');
+  const btn = document.getElementById('paste-toggle-btn');
+  const isVisible = area.classList.toggle('visible');
+  btn.textContent = isVisible ? 'or upload file instead' : 'or paste data instead';
+  if (isVisible) area.focus();
+}
+
+// ── PARSE PASTED RAW DATA ──
+document.getElementById('map-paste-area').addEventListener('input', function() {
+  const raw = this.value.trim();
+  if (!raw) {
+    mapFileReady = false;
+    ipToServer = null;
+    document.getElementById('map-name').style.display = 'none';
+    document.getElementById('card-map').classList.remove('ready');
+    checkReady();
+    return;
+  }
+  const parsed = parsePastedMapping(raw);
+  if (parsed && Object.keys(parsed.map).length > 0) {
+    ipToServer = parsed.map;
+    mapFormat = parsed.format;
+    mapFileReady = true;
+    document.getElementById('map-name').textContent = parsed.format;
+    document.getElementById('map-name').style.display = 'block';
+    document.getElementById('card-map').classList.add('ready');
+    checkReady();
+  } else {
+    mapFileReady = false;
+    document.getElementById('card-map').classList.remove('ready');
+    checkReady();
+  }
+});
+
+function parsePastedMapping(raw) {
+  const map = {};
+  let currentSvr = null;
+  let ipCount = 0;
+  const lines = raw.split('\n');
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) continue;
+    if (line.includes(',')) {
+      // IP,domain line — extract only the IP part
+      const ip = line.split(',')[0].trim();
+      if (ip && currentSvr) {
+        map[ip] = currentSvr;
+        ipCount++;
+      }
+    } else {
+      // Server name line
+      currentSvr = line;
+    }
+  }
+  if (ipCount === 0) return null;
+  const serverCount = new Set(Object.values(map)).size;
+  return { map, format: `Pasted data · ${serverCount} servers · ${ipCount} IPs` };
+}
+
+function parseMapping(wb) {
+  // ── FORMAT A: template with "IPs Per Server" sheet ──
+  if (wb.SheetNames.includes('IPs Per Server')) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets['IPs Per Server'], { header: 1 });
+    const map = {};
+    let currentSvr = null;
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (row[0]) currentSvr = String(row[0]).trim();
+      if (row[1]) map[String(row[1]).trim()] = currentSvr;
+    }
+    return { map, format: 'Template (IPs Per Server)' };
+  }
+
+  // ── FORMAT B: provider list with Provider + ips columns ──
+  const sheetName = wb.SheetNames[0];
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
+  if (!rows.length) { alert('Mapping file appears to be empty.'); return null; }
+
+  const headers = rows[0].map(h => h ? String(h).toLowerCase().trim() : '');
+  const providerIdx = headers.indexOf('provider');
+  const ipsIdx = headers.findIndex(h => h === 'ips');
+  const aliasIdx = headers.indexOf('alias');
+
+  if (providerIdx === -1 || ipsIdx === -1) {
+    alert('Could not detect file format.\nExpected either an "IPs Per Server" sheet, or columns named "Provider" and "ips".');
+    return null;
+  }
+
+  const mainipIdx = headers.findIndex(h => h === 'mainip');
+
+  const map = {};
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    let provider = row[providerIdx] ? String(row[providerIdx]).trim() : null;
+    if (!provider) continue;
+    if (aliasIdx !== -1 && row[aliasIdx]) {
+      provider = String(row[aliasIdx]).trim() || provider;
+    }
+    const ipsRaw = row[ipsIdx];
+    if (!ipsRaw) continue;
+    const ipList = String(ipsRaw).split(',').map(s => s.trim()).filter(Boolean);
+    if (!ipList.length) continue;
+    const mainIp = ipList[0];
+    const serverKey = provider + ' (' + mainIp + ')';
+    for (const ip of ipList) {
+      map[ip] = serverKey;
+    }
+  }
+  return { map, format: 'Provider list (' + (rows.length - 1) + ' providers)' };
+}
+
+function checkReady() {
+  document.getElementById('process-btn').disabled = !(spfFileReady && mapFileReady);
+}
+
+async function processFiles() {
+  const btn = document.getElementById('process-btn');
+  btn.disabled = true;
+  btn.textContent = 'Processing...';
+
+  const progressWrap = document.getElementById('progress-bar-wrap');
+  const progressBar = document.getElementById('progress-bar');
+  const progressText = document.getElementById('progress-text');
+  progressWrap.style.display = 'block';
+  progressText.style.display = 'block';
+
+  // Give UI a tick to update
+  await new Promise(r => setTimeout(r, 20));
+
+  // ── BUILD IP → SERVER MAP ──
+  progressText.textContent = 'Building server map...';
+  progressBar.style.width = '10%';
+  await new Promise(r => setTimeout(r, 10));
+
+  // ── PARSE SPF CSV ──
+  progressText.textContent = 'Parsing SPF file...';
+  progressBar.style.width = '25%';
+  await new Promise(r => setTimeout(r, 10));
+
+  const lines = spfText.split('\n');
+  const total = lines.length;
+
+  // data[serverName][ip] = Set of domains
+  const data = {};
+  const serverAllDomains = {};
+  let processed = 0;
+  let unmatched = new Set();
+
+  // Process in chunks to avoid blocking UI
+  const CHUNK = 5000;
+  for (let start = 1; start < total; start += CHUNK) {
+    const end = Math.min(start + CHUNK, total);
+    for (let i = start; i < end; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const parts = line.split(';');
+      if (parts.length < 3) continue;
+      const domain = parts[0].trim();
+      const ipDomain = parts[1].trim();
+      if (!domain || !ipDomain) continue;
+
+      const serverName = ipToServer[ipDomain] || null;
+      if (!serverName) { unmatched.add(ipDomain); continue; }
+
+      if (!data[serverName]) {
+        data[serverName] = {};
+        serverAllDomains[serverName] = new Set();
+      }
+      if (!data[serverName][ipDomain]) data[serverName][ipDomain] = new Set();
+      data[serverName][ipDomain].add(domain);
+      serverAllDomains[serverName].add(domain);
+      processed++;
+    }
+    const pct = 25 + Math.round((end / total) * 70);
+    progressBar.style.width = pct + '%';
+    progressText.textContent = `Processing rows... ${Math.round(end/total*100)}%`;
+    await new Promise(r => setTimeout(r, 0));
+  }
+
+  progressBar.style.width = '100%';
+  progressText.textContent = 'Building interface...';
+  await new Promise(r => setTimeout(r, 30));
+
+  // ── BUILD FINAL DATA STRUCTURE ──
+  appData = {};
+  for (const svr of Object.keys(data)) {
+    const ips = Object.keys(data[svr]).map(ip => ({
+      ip,
+      domains: Array.from(data[svr][ip]).sort(),
+      count: data[svr][ip].size
+    })).sort((a, b) => b.count - a.count);
+    appData[svr] = {
+      ips,
+      allDomains: Array.from(serverAllDomains[svr]).sort(),
+      totalDomains: serverAllDomains[svr].size
+    };
+  }
+
+  allServers = Object.keys(appData).sort((a, b) => appData[b].totalDomains - appData[a].totalDomains);
+
+  const totalDomainRows = Object.values(appData).reduce((s, v) => s + v.totalDomains, 0);
+  document.getElementById('global-stats').innerHTML =
+    `<span>${allServers.length}</span> servers &nbsp;·&nbsp; <span>${totalDomainRows.toLocaleString()}</span> domains`;
+  document.getElementById('header-file-label').textContent = `${processed.toLocaleString()} rows loaded`;
+
+  renderServerList(allServers);
+
+  document.getElementById('upload-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('app').style.flexDirection = 'column';
+}
+
+function renderServerList(servers) {
+  const list = document.getElementById('server-list');
+  if (servers.length === 0) {
+    list.innerHTML = '<div class="no-results">No servers found</div>';
+    return;
+  }
+  list.innerHTML = servers.map(svr => {
+    const d = appData[svr];
+    const isActive = svr === currentServer;
+    return `<div class="server-item${isActive ? ' active' : ''}" onclick="selectServer('${CSS.escape(svr)}')">
+      <span class="server-name">${svr}</span>
+      <div class="server-meta">
+        <span class="domain-count">${d.totalDomains.toLocaleString()}</span>
+        <span class="ip-count">${d.ips.length} IPs</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterServers(q) {
+  const filtered = q.trim()
+    ? allServers.filter(s => s.toLowerCase().includes(q.trim().toLowerCase()))
+    : allServers;
+  renderServerList(filtered);
+}
+
+function selectServer(svr) {
+  currentServer = svr;
+  const d = appData[svr];
+
+  // Update active state in list
+  document.querySelectorAll('.server-item').forEach(el => {
+    el.classList.toggle('active', el.querySelector('.server-name').textContent === svr);
+  });
+
+  // Show copy button
+  const copyBtn = document.getElementById('copy-server-btn');
+  copyBtn.style.display = 'flex';
+  copyBtn.classList.remove('copied');
+  copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy all domains (${d.totalDomains.toLocaleString()})`;
+
+  const ipBlocks = d.ips.map(ipObj => `
+    <div class="ip-block" id="ipblock-${ipObj.ip.replace(/\./g,'_')}">
+      <div class="ip-block-header" onclick="toggleIP(this.parentElement)">
+        <span class="ip-addr" onclick="event.stopPropagation(); copyIPAddr('${ipObj.ip}', this)" title="Click to copy IP">${ipObj.ip}</span>
+        <span class="ip-domain-count">${ipObj.count.toLocaleString()} domains</span>
+        <button class="ip-copy-btn" onclick="event.stopPropagation(); copyIP('${ipObj.ip}')">Copy</button>
+        <svg class="expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+      <div class="domain-list">
+        ${ipObj.domains.map(dom => `<div class="domain-item">${dom}</div>`).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('detail-panel').innerHTML = `
+    <div class="detail-header">
+      <div class="detail-server-name">${svr}</div>
+      <div class="summary-cards">
+        <div class="summary-card">
+          <span class="summary-label">TOTAL DOMAINS</span>
+          <span class="summary-val">${d.totalDomains.toLocaleString()}</span>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">UNIQUE IPs</span>
+          <span class="summary-val">${d.ips.length}</span>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">AVG / IP</span>
+          <span class="summary-val">${Math.round(d.totalDomains / d.ips.length).toLocaleString()}</span>
+        </div>
+      </div>
+    </div>
+    <div class="ip-blocks">${ipBlocks}</div>
+  `;
+}
+
+function toggleIP(block) {
+  block.classList.toggle('expanded');
+}
+
+function copyIPAddr(ip, el) {
+  navigator.clipboard.writeText(ip).then(() => {
+    showToast(`Copied IP: ${ip}`);
+    const orig = el.textContent;
+    el.textContent = 'Copied!';
+    setTimeout(() => { el.textContent = orig; }, 1200);
+  });
+}
+
+function copyIP(ip) {
+  // Find the server data
+  if (!currentServer) return;
+  const ipObj = appData[currentServer].ips.find(x => x.ip === ip);
+  if (!ipObj) return;
+  navigator.clipboard.writeText(ipObj.domains.join('\n')).then(() => {
+    showToast(`Copied ${ipObj.count.toLocaleString()} domains for ${ip}`);
+    // Also mark button
+    const btn = event.target.closest('.ip-copy-btn');
+    if (btn) {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+    }
+  });
+}
+
+function copyServerDomains() {
+  if (!currentServer) return;
+  const domains = appData[currentServer].allDomains;
+  navigator.clipboard.writeText(domains.join('\n')).then(() => {
+    showToast(`Copied ${domains.length.toLocaleString()} domains for ${currentServer}`);
+    const btn = document.getElementById('copy-server-btn');
+    btn.classList.add('copied');
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Copied!`;
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy all domains (${domains.length.toLocaleString()})`;
+    }, 1800);
+  });
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+</script>
+</body>
+</html>
